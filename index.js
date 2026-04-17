@@ -3,22 +3,27 @@ const express = require('express');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
-
-// Render gives us a URL, we need to tell Telegram to send messages there
-const URL = process.env.RENDER_EXTERNAL_URL; 
 const PORT = process.env.PORT || 3000;
 
-// Setup the Webhook
-bot.telegram.setWebhook(`${URL}/bot${process.env.BOT_TOKEN}`);
-app.use(bot.webhookCallback(`/bot${process.env.BOT_TOKEN}`));
+// This makes Render think we are a website so it doesn't kill us
+app.get('/', (req, res) => {
+  res.send('KNIVES DEALER IS ONLINE');
+});
 
-// Basic commands
-bot.start((ctx) => ctx.reply("🔪 KNIVES DEALER IS LIVE."));
+// Bot Commands
+bot.start((ctx) => ctx.reply("🔪 KNIVES DEALER IS LIVE. Type /roll to play."));
 bot.command('roll', (ctx) => ctx.replyWithDice());
 
-// Render needs to see a "Home Page" to stay alive
-app.get('/', (req, res) => res.send('Bot is Running!'));
-
+// Start the Express server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
+
+// Start the Bot
+bot.launch().then(() => {
+  console.log('Bot is running on Telegram...');
+});
+
+// Safety stops
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
