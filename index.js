@@ -5,7 +5,7 @@ const { createClient } = require('@supabase/supabase-js');
 // --- KEYS ---
 const SB_URL = "https://dptjeumndtrgfaxtlwim.supabase.co/"; 
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwdGpldW1uZHRyZ2ZheHRsd2ltIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjQ0NTk5MiwiZXhwIjoyMDkyMDIxOTkyfQ.Oc3eiwbo0p4vArLqFuNKdYKLF7mhtNZ42NS5EPkl4uM";
-const TG_TOKEN = "7883530863:AAEZAn-g8qZT3Lo72zgb5ph3ZMyZdmfVtMM";
+const TG_TOKEN = "7883530863:AAFcepq9EGYbKIv1nXx8FxIVkFKUtxlZ5aw";
 
 const supabase = createClient(SB_URL, SB_KEY);
 const bot = new Telegraf(TG_TOKEN);
