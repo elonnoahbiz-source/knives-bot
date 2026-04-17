@@ -5,7 +5,7 @@ const { createClient } = require('@supabase/supabase-js');
 // ==========================================
 // 🛠️ PASTE YOUR ACTUAL STRINGS BETWEEN THE " "
 // ==========================================
-const my_url = "https://dptjeumndtrgfaxtlwim.supabase.co/"; 
+const my_url = "https://dptjeumndtrgfaxtlwim.supabase.co"; 
 const my_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwdGpldW1uZHRyZ2ZheHRsd2ltIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjQ0NTk5MiwiZXhwIjoyMDkyMDIxOTkyfQ.Oc3eiwbo0p4vArLqFuNKdYKLF7mhtNZ42NS5EPkl4uM";
 const my_token = "7883530863:AAEZAn-g8qZT3Lo72zgb5ph3ZMyZdmfVtMM";
 // ==========================================
