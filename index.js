@@ -1,19 +1,29 @@
 const { Telegraf } = require('telegraf');
+const http = require('http');
 
-// This connects to the bot you made in BotFather
+// 1. THE HEARTBEAT (This fixes the Render error)
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('KNIVES DEALER IS RUNNING\n');
+});
+
+// Render gives us a port automatically, we must use it
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Heartbeat monitoring on port ${PORT}`);
+});
+
+// 2. THE BOT LOGIC
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// What happens when you first message the bot
 bot.start((ctx) => {
   ctx.reply("🔪 KNIVES DEALER IS LIVE.\n\nType /roll to gamble!");
 });
 
-// The basic dice game command
 bot.command('roll', (ctx) => {
   ctx.replyWithDice();
 });
 
-// Keep the bot running
 bot.launch();
 
 // Safety stops
