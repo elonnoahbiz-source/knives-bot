@@ -1,23 +1,24 @@
 const { Telegraf } = require('telegraf');
+const express = require('express');
 
-// Use the token from our environment variables
 const bot = new Telegraf(process.env.BOT_TOKEN);
+const app = express();
 
-// The simple start command
-bot.start((ctx) => {
-  ctx.reply("🔪 KNIVES DEALER IS LIVE.\n\nType /roll to gamble!");
+// Render gives us a URL, we need to tell Telegram to send messages there
+const URL = process.env.RENDER_EXTERNAL_URL; 
+const PORT = process.env.PORT || 3000;
+
+// Setup the Webhook
+bot.telegram.setWebhook(`${URL}/bot${process.env.BOT_TOKEN}`);
+app.use(bot.webhookCallback(`/bot${process.env.BOT_TOKEN}`));
+
+// Basic commands
+bot.start((ctx) => ctx.reply("🔪 KNIVES DEALER IS LIVE."));
+bot.command('roll', (ctx) => ctx.replyWithDice());
+
+// Render needs to see a "Home Page" to stay alive
+app.get('/', (req, res) => res.send('Bot is Running!'));
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-// The dice game
-bot.command('roll', (ctx) => {
-  ctx.replyWithDice();
-});
-
-// Start the bot using "Polling" (The easiest way)
-bot.launch().then(() => {
-    console.log("Bot is running...");
-});
-
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
