@@ -1,0 +1,12 @@
+{
+  "name": "knives-bot",
+  "version": "1.0.0",
+  "description": "Knives Casino Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3"
+  }
+}
