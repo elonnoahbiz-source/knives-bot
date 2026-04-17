@@ -1,16 +1,16 @@
 const { Telegraf } = require('telegraf');
 const http = require('http');
 
-// 1. THE HEARTBEAT (This fixes the Render error)
+// 1. THIS IS THE FIX: A tiny web server to satisfy Render
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('KNIVES DEALER IS RUNNING\n');
+  res.writeHead(200);
+  res.end('KNIVES DEALER IS ONLINE');
 });
 
-// Render gives us a port automatically, we must use it
+// Render gives us a Port, we MUST listen to it or it will crash
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Heartbeat monitoring on port ${PORT}`);
+  console.log(`Port ${PORT} is open for Render.`);
 });
 
 // 2. THE BOT LOGIC
@@ -24,8 +24,11 @@ bot.command('roll', (ctx) => {
   ctx.replyWithDice();
 });
 
-bot.launch();
+// Start the bot
+bot.launch().then(() => {
+  console.log("Bot is successfully connected to Telegram.");
+});
 
-// Safety stops
+// Essential safety for free hosting
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
