@@ -13,7 +13,11 @@ async function getAccount(userId, username) {
   let { data, error } = await supabase.from('users').select('*').eq('user_id', userId).single();
   
   if (!data) {
-    const { data: newUser } = await supabase.from('users').insert([{ user_id: userId, username: username, balance: 1000 }]).select().single();
+    const { data: newUser, error: insertError } = await supabase
+      .from('users')
+      .insert([{ user_id: userId, username: username || 'unknown', balance: 1000 }])
+      .select()
+      .single();
     return newUser;
   }
   return data;
@@ -39,7 +43,8 @@ bot.command('balance', async (ctx) => {
 bot.command('roll', async (ctx) => {
   const userId = ctx.from.id;
   const user = await getAccount(userId, ctx.from.username);
-  const bet = parseInt(ctx.message.text.split(' ')[1]);
+  const text = ctx.message.text.split(' ');
+  const bet = parseInt(text[1]);
 
   if (!bet || bet <= 0) return ctx.reply("❌ Usage: /roll [amount]");
   if (user.balance < bet) return ctx.reply("💀 Insufficient funds.");
