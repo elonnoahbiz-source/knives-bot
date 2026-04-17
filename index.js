@@ -1,67 +1,65 @@
 const { Telegraf } = require('telegraf');
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
 
+// 1. Setup Database & Bot
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// LORD CODE: A temporary "Bank" (Warning: This resets if the bot restarts)
-// We will move this to a permanent database in the next phase.
-let bank = {};
-
-app.get('/', (req, res) => { res.send('KNIVES DEALER IS ONLINE'); });
-
-// 1. WELCOME & GIVE STARTING CREDITS
-bot.start((ctx) => {
-  const userId = ctx.from.id;
-  if (!bank[userId]) {
-    bank[userId] = 1000; // Give them 1,000 free credits to start
+// Helper: Get or Create User in DB
+async function getAccount(userId, username) {
+  let { data, error } = await supabase.from('users').select('*').eq('user_id', userId).single();
+  
+  if (!data) {
+    const { data: newUser } = await supabase.from('users').insert([{ user_id: userId, username: username, balance: 1000 }]).select().single();
+    return newUser;
   }
-  ctx.reply(`🔪 WELCOME TO THE PIT, ${ctx.from.first_name}.\n\n💰 Balance: ${bank[userId]} K-Credits\n\nCommands:\n/roll [amount] - Gamble credits\n/balance - Check your bag`);
+  return data;
+}
+
+// Helper: Update Balance
+async function updateBal(userId, newBal) {
+  await supabase.from('users').update({ balance: newBal }).eq('user_id', userId);
+}
+
+app.get('/', (req, res) => res.send('KNIVES DEALER VAULT IS SECURED'));
+
+bot.start(async (ctx) => {
+  const user = await getAccount(ctx.from.id, ctx.from.username);
+  ctx.reply(`🔪 WELCOME TO THE PIT.\n💰 Balance: ${user.balance} K-Credits\n\n/roll [amount] to gamble.`);
 });
 
-// 2. CHECK BALANCE
-bot.command('balance', (ctx) => {
-  const userId = ctx.from.id;
-  const bal = bank[userId] || 0;
-  ctx.reply(`💰 Your Current Balance: ${bal} K-Credits`);
+bot.command('balance', async (ctx) => {
+  const user = await getAccount(ctx.from.id, ctx.from.username);
+  ctx.reply(`💰 Your Current Balance: ${user.balance} K-Credits`);
 });
 
-// 3. THE ACTUAL GAMBLE (High-Detail)
-bot.command('roll', (ctx) => {
+bot.command('roll', async (ctx) => {
   const userId = ctx.from.id;
-  const text = ctx.message.text.split(' ');
-  const bet = parseInt(text[1]);
+  const user = await getAccount(userId, ctx.from.username);
+  const bet = parseInt(ctx.message.text.split(' ')[1]);
 
-  // Check if they actually put a number
-  if (!bet || bet <= 0) {
-    return ctx.reply("❌ Usage: /roll [amount]\nExample: /roll 100");
-  }
+  if (!bet || bet <= 0) return ctx.reply("❌ Usage: /roll [amount]");
+  if (user.balance < bet) return ctx.reply("💀 Insufficient funds.");
 
-  // Check if they have enough money
-  if (bank[userId] < bet) {
-    return ctx.reply("💀 You're broke, kid. Use /balance to check.");
-  }
+  let currentBal = user.balance - bet;
+  await updateBal(userId, currentBal);
 
-  // Deduct the bet first
-  bank[userId] -= bet;
-
-  // Roll the dice
   ctx.replyWithDice().then((msg) => {
     const value = msg.dice.value;
-    
-    // Wait for the animation to stop (3 seconds)
-    setTimeout(() => {
-      if (value >= 4) { // 4, 5, 6 = WIN
-        const winAmount = bet * 2;
-        bank[userId] += winAmount;
-        ctx.reply(`✅ WINNER! You rolled a ${value}.\n💰 Won: ${winAmount}\nNew Balance: ${bank[userId]}`);
-      } else { // 1, 2, 3 = LOSS
-        ctx.reply(`💀 LOSS. You rolled a ${value}.\nNew Balance: ${bank[userId]}`);
+    setTimeout(async () => {
+      if (value >= 4) {
+        currentBal += (bet * 2);
+        await updateBal(userId, currentBal);
+        ctx.reply(`✅ WIN! Rolled ${value}.\n💰 Balance: ${currentBal}`);
+      } else {
+        ctx.reply(`💀 LOSS. Rolled ${value}.\n💰 Balance: ${currentBal}`);
       }
     }, 3500);
   });
 });
 
-app.listen(PORT, () => { console.log(`Server on ${PORT}`); });
+app.listen(PORT, () => console.log(`Live on ${PORT}`));
 bot.launch();
