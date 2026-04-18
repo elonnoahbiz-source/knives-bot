@@ -146,9 +146,61 @@ bot.action('adm_edit', (ctx) => {
     ctx.reply("To edit a user, send:\n`EDIT [USER_ID] [NEW_BALANCE]`\nTo lock a user, send:\n`LOCK [USER_ID]`");
 });
 
-// --- 7. START ---
-app.get('/', (req, res) => res.send('GODDESS IS ONLINE'));
-app.listen(process.env.PORT || 10000, () => {
-    bot.launch();
-    console.log("The Great Reset has begun.");
+// --- UPDATED START HANDLER ---
+bot.start(async (ctx) => {
+    try {
+        const payload = ctx.startPayload; // Captures the referral code from the link
+        const user = await getAccount(ctx.from.id, ctx.from.username, payload);
+        
+        const welcomeMsg = `🔪 **WELCOME TO THE PIT** 🔪\n\n` +
+            `💰 **Balance:** $${(user.balance || 0).toFixed(2)}\n` +
+            `🎁 **Bonus:** $${(user.bonus_balance || 0).toFixed(2)}\n\n` +
+            `*THE GAMES:*\n/flip /dice /slots /mines /tower\n/crash /wheel /cards /keno /plinko\n\n` +
+            `*SYSTEM:*\n📥 /deposit  📤 /withdraw\n🎁 /daily  🔗 /referral`;
+            
+        ctx.replyWithMarkdown(welcomeMsg);
+    } catch (e) {
+        console.error("Start Error:", e);
+        ctx.reply("⚠️ System recalibrating... try /start again in a moment.");
+    }
+});
+
+// --- UPDATED ADMIN & LOGIN LISTENER ---
+bot.on('text', async (ctx, next) => {
+    const text = ctx.message.text;
+    const uid = ctx.from.id;
+
+    // Secret Admin Login
+    if (text === "knife" && uid === OWNER_ID) {
+        adminState[uid] = { step: 'pass' };
+        return ctx.reply("Admin User OK. Password?");
+    }
+    
+    if (adminState[uid]?.step === 'pass') {
+        if (text === "9999") {
+            delete adminState[uid];
+            return ctx.reply("👑 **GODDESS CONTROL**", Markup.inlineKeyboard([
+                [Markup.button.callback('📊 Feed', 'adm_feed')],
+                [Markup.button.callback('👥 Referrals', 'adm_refs')],
+                [Markup.button.callback('✏️ Edit Profile', 'adm_edit')]
+            ]));
+        } else {
+            delete adminState[uid];
+            return ctx.reply("❌ Denied.");
+        }
+    }
+
+    // Capture Deposit Hashes (Long text, not a command)
+    if (text.length > 25 && !text.startsWith('/')) {
+        ctx.reply("⌛ **VERIFYING ON BLOCKCHAIN...**");
+        bot.telegram.sendMessage(OWNER_ID, `💰 **DEPOSIT HASH:**\nUser: @${ctx.from.username}\nID: \`${uid}\`\nHash: \`${text}\``,
+            Markup.inlineKeyboard([
+                [Markup.button.callback('✅ Add $10', `add_${uid}_10`), Markup.button.callback('✅ Add $50', `add_${uid}_50`)],
+                [Markup.button.callback('❌ Reject', `reject_${uid}`)]
+            ])
+        );
+        return;
+    }
+    
+    return next();
 });
