@@ -167,3 +167,115 @@ app.listen(process.env.PORT || 10000, '0.0.0.0', () => {
         console.log("Lord Cord Casino is operational.");
     });
 });
+// =========================================================
+// --- LORD CORD EXPANSION: GAMES & ADMIN PANEL ---
+// =========================================================
+
+// 1. DICE (65% House Edge - Rigged)
+bot.command('dice', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) return ctx.reply("🎲 *DICE TUTORIAL*\nRoll a 4, 5, or 6 to win 2x!");
+    const bet = parseFloat(args[1]);
+    const user = await getAccount(ctx.from.id, ctx.from.username);
+    if (!bet || bet < 1 || user.balance < bet) return ctx.reply("❌ Invalid bet.");
+
+    // Weighted Random: 65% chance to force a low roll (1-3)
+    const isWin = Math.random() > 0.65; 
+    const roll = isWin ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 3) + 1;
+    const newBal = isWin ? user.balance + bet : user.balance - bet;
+
+    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet, bets_placed: (user.bets_placed || 0) + 1 }).eq('user_id', ctx.from.id);
+    ctx.reply(`🎲 The die rolls... **${roll}**\n${isWin ? `✅ YOU WIN! Bag: $${newBal.toFixed(2)}` : `💀 HOUSE WINS. Bag: $${newBal.toFixed(2)}`}`);
+});
+
+// 2. SLOTS (85% House Edge - Near Miss Logic)
+bot.command('slots', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) return ctx.reply("🎰 *SLOTS TUTORIAL*\nMatch 3 emojis to win 5x!");
+    const bet = parseFloat(args[1]);
+    const user = await getAccount(ctx.from.id, ctx.from.username);
+    if (!bet || bet < 1 || user.balance < bet) return ctx.reply("❌ Invalid bet.");
+
+    const icons = ['💎', '🍒', '🍋', '🔔', '7️⃣'];
+    let s1, s2, s3;
+    // 85% chance to force a "Near Miss" (Match 2 but fail the 3rd)
+    if (Math.random() < 0.85) {
+        s1 = icons[Math.floor(Math.random() * icons.length)];
+        s2 = s1; 
+        s3 = icons.filter(i => i !== s1)[Math.floor(Math.random() * 4)]; 
+    } else {
+        s1 = icons[Math.floor(Math.random() * icons.length)];
+        s2 = icons[Math.floor(Math.random() * icons.length)];
+        s3 = icons[Math.floor(Math.random() * icons.length)];
+    }
+
+    const win = (s1 === s2 && s2 === s3);
+    const newBal = win ? user.balance + (bet * 4) : user.balance - bet;
+    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet, bets_placed: (user.bets_placed || 0) + 1 }).eq('user_id', ctx.from.id);
+    ctx.reply(`🎰 [ ${s1} | ${s2} | ${s3} ]\n${win ? `✅ JACKPOT! +$${(bet * 5).toFixed(2)}` : `💀 SO CLOSE! Try again.`}`);
+});
+
+// 3. MINES (75% House Edge - Weighted Trap)
+bot.command('mines', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) return ctx.reply("💣 *MINES TUTORIAL*\nFind the gem to win 1.5x!");
+    const bet = parseFloat(args[1]);
+    const user = await getAccount(ctx.from.id, ctx.from.username);
+    if (!bet || bet < 1 || user.balance < bet) return ctx.reply("❌ Invalid bet.");
+
+    const hitMine = Math.random() < 0.75; 
+    const newBal = hitMine ? user.balance - bet : user.balance + (bet * 0.5);
+    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet, bets_placed: (user.bets_placed || 0) + 1 }).eq('user_id', ctx.from.id);
+    
+    ctx.reply(`${hitMine ? "🟥 💣 🟥" : "🟦 💎 🟦"}\n${hitMine ? `💀 BOOM. Mine hit. -$${bet}` : `💎 SAFE. Gem found! +$${(bet * 0.5).toFixed(2)}`}`);
+});
+
+// 4. ADMIN PANEL & BROADCAST
+bot.command('admin', (ctx) => {
+    if (ctx.from.id !== OWNER_ID) return; // Silent ignore for non-owners
+    ctx.reply("🔒 *ADMIN ACCESS*\nPlease enter the master password:");
+});
+
+bot.on('text', async (ctx, next) => {
+    // PASSWORD GATE
+    if (ctx.message.text === "iamaking2000") {
+        if (ctx.from.id !== OWNER_ID) return ctx.reply("Access Denied.");
+        
+        const { data: allUsers } = await supabase.from('users').select('*');
+        const totalWagered = allUsers.reduce((sum, u) => sum + (u.total_wagered || 0), 0);
+        const totalDep = allUsers.reduce((sum, u) => sum + (u.total_deposited || 0), 0);
+        const currentBal = allUsers.reduce((sum, u) => sum + (u.balance || 0), 0);
+        const houseProfit = totalDep - currentBal;
+
+        const stats = `👑 *KNIVES CASINO ADMIN*\n\n` +
+            `👥 Active Players: ${allUsers.length}\n` +
+            `📥 Total Deposits: $${totalDep.toFixed(2)}\n` +
+            `📉 Total Wagered: $${totalWagered.toFixed(2)}\n` +
+            `💰 *HOUSE PROFIT: $${houseProfit.toFixed(2)}*\n\n` +
+            `*ADMIN COMMANDS:*`;
+        
+        return ctx.replyWithMarkdown(stats, Markup.inlineKeyboard([
+            [Markup.button.callback('📢 Broadcast Msg', 'admin_broadcast')],
+            [Markup.button.callback('📊 Refresh Stats', 'admin_refresh')]
+        ]));
+    }
+
+    // BROADCAST HANDLER
+    if (ctx.message.text.startsWith('BC:') && ctx.from.id === OWNER_ID) {
+        const msg = ctx.message.text.replace('BC:', '').trim();
+        const { data: users } = await supabase.from('users').select('user_id');
+        let count = 0;
+        for (let u of users) {
+            try {
+                await bot.telegram.sendMessage(u.user_id, `🔔 *ANNOUNCEMENT:*\n\n${msg}`, { parse_mode: 'Markdown' });
+                count++;
+            } catch (e) {}
+        }
+        return ctx.reply(`✅ Broadcast sent to ${count} users.`);
+    }
+    return next();
+});
+
+bot.action('admin_broadcast', (ctx) => {
+    ctx.reply("📢 *BROADCAST MODE*\nType your message starting with `BC:`\nExample: `BC: Bonus credits for all active players!`");
+});
