@@ -42,8 +42,8 @@ bot.start(async (ctx) => {
         `💰 *Wallet Balance:* $${(user.balance || 0).toFixed(2)}\n` +
         `📉 *Wagered Today:* $${(user.total_wagered || 0).toFixed(2)}\n\n` +
         `*AVAILABLE GAMES:*\n` +
-        `🪙 /flip - Double or Nothing (48% Win Chance)\n` +
-        `🚀 /crash - Multiplier Greed Trap\n\n` +
+        `🪙 /flip - Double or Nothing \n` +
+        `🚀 /crash - Multiplier \n\n` +
         `*CASHIER:*\n` +
         `📥 /deposit - Buy Credits (Min $5)\n` +
         `📤 /withdraw - Cash Out (Req: 2x Deposit + 2 Bets)\n` +
