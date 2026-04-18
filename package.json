@@ -1,14 +1,11 @@
 {
-  "name": "knives-bot",
+  "name": "knives-casino",
   "version": "1.0.0",
-  "description": "Knives Casino Bot",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
     "telegraf": "^4.16.3",
     "express": "^4.19.2",
-    "@supabase/supabase-js": "^2.43.0"
+    "@supabase/supabase-js": "^2.43.2",
+    "axios": "^1.6.8"
   }
 }
