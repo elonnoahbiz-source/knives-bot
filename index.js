@@ -4,7 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 // --- 1. CONFIG ---
 const SB_URL = "https://dptjeumndtrgfaxtlwim.supabase.co/"; 
-const SB_KEY = "YOUR_SERVICE_ROLE_KEY"; // Use service_role to bypass RLS for admin tasks
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwdGpldW1uZHRyZ2ZheHRsd2ltIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjQ0NTk5MiwiZXhwIjoyMDkyMDIxOTkyfQ.Oc3eiwbo0p4vArLqFuNKdYKLF7mhtNZ42NS5EPkl4uM"; // Use service_role to bypass RLS for admin tasks
 const TG_TOKEN = "7883530863:AAFcepq9EGYbKIv1nXx8FxIVkFKUtxlZ5aw";
 const OWNER_ID = 6542642909; 
 
